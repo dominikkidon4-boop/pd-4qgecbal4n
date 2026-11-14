@@ -67,6 +67,8 @@ header{display:flex;align-items:center;gap:12px;margin:6px 0 10px}
 @keyframes tin{from{transform:translateY(-120%);opacity:0}to{transform:none;opacity:1}}
 footer{color:var(--dim);font-size:11px;text-align:center;margin-top:12px}
 details summary{cursor:pointer;color:var(--mut);font-size:13px;margin-top:6px}
+.isdelayed .live{background:rgba(245,158,11,.16);border-color:rgba(245,158,11,.6);color:#fbbf24}.isdelayed .live i{background:#f59e0b;animation:none}
+.chart polyline,.chart polygon{transition:all .6s ease}
 </style></head><body>
 <div id="toasts"></div>
 <div class="wrap" id="root">
@@ -78,11 +80,13 @@ details summary{cursor:pointer;color:var(--mut);font-size:13px;margin-top:6px}
 <footer><b>PAPER ONLY · symulacja</b><br>Simulated trades on real DexScreener / GeckoTerminal / RugCheck data · no wallet · no keys · read-only<br><span id="src"></span></footer>
 </div>
 <meta name="robots" content="noindex,nofollow">
-<script>window.__REMOTE__={"api": "https://api.github.com/gists/6dc819e272e03b4655c631c4a0e23af0", "file": "s.json", "poll_ms": 75000, "stale_sec": 240};</script>
+<meta name="referrer" content="no-referrer">
+<script src="https://cdn.ably.com/lib/ably.min-2.30.0.js" integrity="sha384-rEFIsedVIWDtgbXX8tgLdt3FqyhqXcyab7ICHpdt2UErA00K7lzuf2pCsBnygjZ/" crossorigin="anonymous"></script>
+<script>window.__REMOTE__={"api": "https://api.github.com/gists/6dc819e272e03b4655c631c4a0e23af0", "file": "s.json", "tfile": "t.json", "poll_ms": 75000, "live_poll_ms": 240000, "stale_sec": 300, "hb_stale_sec": 30};</script>
 <script>
 const EMBED = window.__EMBED__ || null;
 const REMOTE = window.__REMOTE__ || null;
-let lastRemote=null, remoteWait=60000;
+let lastRemote=null, remoteWait=60000, remoteTimer=null, TOK=null, ably=null, ablyState="off", lastMsgLocal=0, srvOffset=0, gistKick=null;
 const TZ = "Europe/Warsaw";
 let S=null, src="", curD=-1, curP=-1, es=null, pollTimer=null, shownEq=null, badgeShown={}, posPrev={}, IMG={}, LOG=[], logEl=null;
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -131,7 +135,14 @@ function chart(c,start){
 /* ---------- header / ticker ---------- */
 function header(){ if(!S) return; const lc=S.last_cycle, st=S.settings;
   let stale=!lc||age(lc.ts)>st.stale_after_sec||age(S.last_risk_tick)>60;
-  if(REMOTE){const g=new Date(S.generated_at).getTime();stale=age(S.generated_at)>REMOTE.stale_sec||!lc||(g-new Date(lc.ts))/1000>300||(g-new Date(S.last_risk_tick))/1000>60;}
+  if(REMOTE){ const live=isLive(), rt=(Date.now()+srvOffset-new Date(S.last_risk_tick))/1000;
+    if(live){ stale=!lc||!(rt<=(REMOTE.hb_stale_sec||30)); }
+    else { const g=new Date(S.generated_at).getTime();stale=age(S.generated_at)>REMOTE.stale_sec||!lc||(g-new Date(lc.ts))/1000>300||(g-new Date(S.last_risk_tick))/1000>60; }
+    const mode=stale?"STALE":live?"LIVE":"DELAYED";
+    $("root").classList.toggle("isstale",stale); $("root").classList.toggle("isdelayed",mode==="DELAYED"); $("livetxt").textContent=mode;
+    $("lastcycle").textContent=(lc?`cycle #${lc.cycle} at ${fT(lc.ts,true)}`:"no cycle yet")+` · risk tick ${rel(live?rt:age(S.last_risk_tick))}`+
+      (stale?(live?" · desk not ticking (stopped)":" · data older than one cycle"):"")+" · Europe/Warsaw"+(live?" · realtime":` · fallback, published ${rel(age(S.generated_at))}`);
+    return; }
   $("root").classList.toggle("isstale",stale); $("livetxt").textContent=stale?"STALE":"Live";
   $("lastcycle").textContent=(lc?`cycle #${lc.cycle} at ${fT(lc.ts,true)}`:"no cycle yet")+` · risk tick ${rel(age(S.last_risk_tick))}`+(stale?` · data older than one cycle`:"")+" · Europe/Warsaw"+(EMBED?" · offline snapshot":"")+(REMOTE?` · published ${rel(age(S.generated_at))}`:""); }
 function setTape(){
@@ -185,7 +196,7 @@ function render(){
   const s=S, neg=s.multiplier<1, prev=s.equity_prev_cycle, dlt=prev?s.equity-prev.equity:null;
   let h=`<div class="eqhead"><span>Equity · ${usd(s.start_capital,0)} start · max size ${(s.settings.max_position_pct*100).toFixed(0)}%</span><span id="mult" class="mult${neg?" neg":""}">${s.multiplier.toFixed(2)}×</span></div>
   <div class="big"><span class="n" id="eqn"></span><span class="c" id="eqc"></span>${dlt!=null?`<span class="delta ${cc(dlt)}" title="change since previous cycle">${sus(dlt)}</span>`:""}</div>
-  <div class="pnlrow"><span class="p ${cl(s.pnl_usd)}" id="eqpnl">${sus(s.pnl_usd)} (${sp(s.pnl_pct,1).replace("+","")})</span><span class="wl">${s.wins}W / ${s.losses}L</span></div>
+  <div class="pnlrow"><span class="p ${cl(s.pnl_usd)}" id="eqpnl">${sus(s.pnl_usd)} (${sp(s.pnl_pct,1).replace("+","")})</span><span class="wl" id="wl">${s.wins}W / ${s.losses}L</span></div>
   <div id="chartbox">${chart(s.curve,s.start_capital)}</div>`;
   const t=tags(), sm=(S.progress||[]).find(p=>p.stage==="SCOUT");
   h+=`<div class="card"><div class="ch"><h2>Desk · 6 agents</h2><span class="r"><span id="nscan">${num(s.n_scanned)}</span> scanned · <span class="g" id="ntraded">${s.n_traded} traded</span></span></div>`+
@@ -258,7 +269,7 @@ function applyTick(t){
   setOpen(t.open_positions); const rm=$("ag-risk-mid"); if(rm) rm.innerHTML=midFor("risk"); setTape(); header();
   if(cyc) setTimeout(refreshState,1500);
 }
-async function refreshState(){ if(REMOTE){ if(lastRemote){S=lastRemote;render()} return }try{const r=await fetch("api/state",{cache:"no-store"});if(!r.ok)return;const s=await r.json();Object.assign(IMG,s.images||{});S=s;render()}catch(e){}}
+async function refreshState(){ if(REMOTE){ if(!isLive()&&lastRemote&&lastRemote.generated_at!==S.generated_at){S=lastRemote;render()} return }try{const r=await fetch("api/state",{cache:"no-store"});if(!r.ok)return;const s=await r.json();Object.assign(IMG,s.images||{});S=s;render()}catch(e){}}
 function startStream(){ if(window.EventSource){es=new EventSource(`api/stream?d=${curD}&p=${curP}`);es.onmessage=ev=>{try{applyTick(JSON.parse(ev.data))}catch(e){console.warn(e)}};es.onerror=()=>{es.close();es=null;startPolling()}} else startPolling() }
 function startPolling(){ if(pollTimer)return; pollTimer=setInterval(async()=>{try{const r=await fetch(`api/tick?d=${curD}&p=${curP}`,{cache:"no-store"});if(r.ok)applyTick(await r.json())}catch(e){$("root").classList.add("isstale");$("livetxt").textContent="STALE";$("lastcycle").textContent="cannot reach the local server"}},2500) }
 async function getRemote(){
@@ -266,6 +277,7 @@ async function getRemote(){
   if(r.status===403||r.status===429){const rs=r.headers.get("x-ratelimit-reset");remoteWait=rs?Math.max(60000,rs*1000-Date.now()+5000):Math.min(remoteWait*2,600000);throw new Error("rate limited")}
   if(!r.ok) throw new Error("http "+r.status);
   remoteWait=REMOTE.poll_ms; const j=await r.json(), f=j.files[REMOTE.file];
+  const tf=REMOTE.tfile&&j.files[REMOTE.tfile]; if(tf&&tf.content){try{TOK=JSON.parse(tf.content)}catch(e){}}
   const txt=f.truncated?await (await fetch(f.raw_url)).text():f.content; return JSON.parse(txt);
 }
 function remoteTick(s2){
@@ -278,18 +290,62 @@ function remoteTick(s2){
     decisions,progress,equity_point:{ts:s2.equity_ts,equity:s2.equity,open_value:s2.open_value},cash:s2.cash,start_capital:s2.start_capital,images:s2.images||{}};
 }
 async function remoteLoop(){
+  clearTimeout(remoteTimer);
   try{ const s2=await getRemote();
-    if(s2.generated_at!==S.generated_at){ const cycChanged=(s2.last_cycle||{}).cycle!==(S.last_cycle||{}).cycle; lastRemote=s2;
-      applyTick(remoteTick(s2)); S.generated_at=s2.generated_at; if(cycChanged) setTimeout(refreshState,1500); }
+    if(isLive()){ if(!lastRemote||s2.generated_at!==lastRemote.generated_at){ lastRemote=s2; mergeRemote(s2) } }
+    else if(s2.generated_at!==S.generated_at){ const cycChanged=(s2.last_cycle||{}).cycle!==(S.last_cycle||{}).cycle; lastRemote=s2;
+      const tk=remoteTick(s2); if(S.equity_ts&&new Date(s2.equity_ts)<=new Date(S.equity_ts)) tk.equity_point=null;
+      applyTick(tk); S.generated_at=s2.generated_at; if(cycChanged) setTimeout(refreshState,1500); }
   }catch(e){ console.warn(e) }
-  header(); setTimeout(remoteLoop,remoteWait);
+  header(); remoteTimer=setTimeout(remoteLoop,remoteWait!==REMOTE.poll_ms?remoteWait:(isLive()?(REMOTE.live_poll_ms||240000):REMOTE.poll_ms));
 }
+/* ---------- realtime (Ably, subscribe-only token from the gist) ---------- */
+function isLive(){return ablyState==="connected"&&Date.now()-lastMsgLocal<40000}
+function mergeRemote(s2){ // the gist snapshot is older than the live stream: keep live fields, take closed trades / stats / curve history
+  if((s2.closed_trades||[]).length===(S.closed_trades||[]).length&&(s2.curve||[]).length<2) return;
+  const newer=new Date(S.equity_ts||0)>=new Date(s2.equity_ts||0), keep={};
+  if(newer) for(const k of ["equity","equity_ts","cash","open_positions","last_risk_tick","last_cycle","ticker","badges","filter_stats","rules8","n_scanned","n_traded","wins","losses"]) keep[k]=S[k];
+  const lastG=(s2.curve||[]).length?new Date(s2.curve[s2.curve.length-1].ts):0, tail=(S.curve||[]).filter(p=>new Date(p.ts)>lastG);
+  if((s2.closed_trades||[]).length===(S.closed_trades||[]).length){ S.curve=(s2.curve||[]).concat(tail); return; }
+  S={...s2,...keep,curve:(s2.curve||[]).concat(tail)}; S.multiplier=S.equity/S.start_capital; S.pnl_usd=S.equity-S.start_capital; S.pnl_pct=100*(S.multiplier-1);
+  render();
+}
+function kickRemote(ms){clearTimeout(remoteTimer);remoteTimer=setTimeout(remoteLoop,ms||3000)}
+function fillTick(m){return {images:m.images||{},max_decision_id:m.max_decision_id??curD,max_progress_id:m.max_progress_id??curP,last_risk_tick:m.last_risk_tick,last_cycle:m.last_cycle||null,
+  open_positions:m.open_positions||S.open_positions||[],ticker:m.ticker||S.ticker||[],badges:m.badges||S.badges,filter_stats:m.filter_stats||S.filter_stats,rules8:m.rules8||S.rules8,
+  n_scanned:m.n_scanned??S.n_scanned,n_traded:m.n_traded??S.n_traded,decisions:(m.decisions||[]).filter(d=>d.id>curD),progress:(m.progress||[]).filter(p=>p.id>curP),
+  equity_point:(m.equity_point&&(!S.equity_ts||new Date(m.equity_point.ts)>new Date(S.equity_ts)))?m.equity_point:null,cash:m.cash??S.cash,start_capital:m.start_capital??S.start_capital}}
+function updKB(){const kb=$("kb");if(!kb||!S.rules8)return;const mx=Math.max(1,...S.rules8.map(r=>r[1]));
+  kb.innerHTML=S.rules8.map(([l,n])=>`<div class="kr"><div class="l"><span>${esc(l)}</span><b>${num(n)}</b></div><div class="b"><i style="width:${(100*n/mx).toFixed(1)}%;transition:width .8s"></i></div></div>`).join("")}
+function onAbly(msg){
+  let m; try{m=typeof msg.data==="string"?JSON.parse(msg.data):msg.data}catch(e){return}
+  if(!m||!S) return; lastMsgLocal=Date.now(); if(m.now) srvOffset=Date.parse(m.now)-Date.now();
+  if(m.last_risk_tick) S.last_risk_tick=m.last_risk_tick;
+  if(msg.name!=="h"){
+    const t=fillTick(m), trade=t.decisions.some(d=>d.decision==="SELL"||d.decision==="BUY");
+    applyTick(t);
+    if(m.wins!=null){S.wins=m.wins;S.losses=m.losses;const w=$("wl");if(w)w.textContent=`${m.wins}W / ${m.losses}L`}
+    if(m.rules8) updKB();
+    if(trade&&!gistKick) gistKick=setTimeout(()=>{gistKick=null;kickRemote(10)},150000); // closed-trade list arrives with the next gist snapshot
+  }
+  header();
+}
+function startAbly(){
+  if(!REMOTE.tfile) return; if(!window.Ably||!TOK){ablyState="unavailable";console.warn("realtime unavailable: "+(!window.Ably?"Ably SDK not loaded":"no token"));return}
+  try{
+    ably=new Ably.Realtime({authCallback:async(params,cb)=>{try{ if(!TOK||!TOK.token_details||TOK.token_details.expires<Date.now()+120000) await getRemote(); cb(null,TOK.token_details) }catch(e){cb(String(e&&e.message||e),null)}},
+      disconnectedRetryTimeout:4000,suspendedRetryTimeout:15000});
+    ably.connection.on(sc=>{const was=isLive();ablyState=sc.current;if(sc.current==="connected"){src=SRC_LIVE;$("src").textContent=src}if(was&&sc.current!=="connected"){src=SRC_FALL;kickRemote(3000)}header()});
+    ably.channels.get(TOK.channel).subscribe(onAbly);
+  }catch(e){console.warn(e);ablyState="failed"}
+}
+const SRC_LIVE="realtime via Ably (updates within ~1–2 s)", SRC_FALL="fallback: published from the desk every ~2 min";
 async function main(){
   if(REMOTE){ try{S=await getRemote()}catch(e){$("root").classList.add("isstale");$("livetxt").textContent="STALE";$("lastcycle").textContent="cannot load published data ("+e.message+") — retrying";setTimeout(main,remoteWait);return}
-    src="published from the desk every ~45 s · page checks every "+Math.round(REMOTE.poll_ms/1000)+" s"; curD=S.max_decision_id; curP=S.max_progress_id||0; IMG=S.images||{};
+    src=SRC_FALL; curD=S.max_decision_id; curP=S.max_progress_id||0; IMG=S.images||{};
     LOG=(S.feed||[]).concat((S.events||[]).filter(e=>!(S.feed||[]).some(f=>f.id===e.id))).sort((a,b)=>b.id-a.id);
     for(const e of S.events||[]){const f=LOG.find(x=>x.id===e.id);if(f){f.pnl=e.pnl;f.size_usd=e.size_usd}}
-    render(); setInterval(header,1000); setTimeout(remoteLoop,REMOTE.poll_ms); return; }
+    render(); setInterval(header,1000); lastRemote=S; startAbly(); remoteTimer=setTimeout(remoteLoop,REMOTE.poll_ms); return; }
   if(EMBED){S=EMBED;src="embedded snapshot (offline file — not live)";}
   else{ try{const r=await fetch("api/state",{cache:"no-store"});S=await r.json()}catch(e){$("root").classList.add("isstale");$("livetxt").textContent="STALE";$("lastcycle").textContent="cannot reach /api/state";return}
     src="live stream from local server"; curD=S.max_decision_id; curP=S.max_progress_id||0; }
