@@ -81,7 +81,7 @@ details summary{cursor:pointer;color:var(--mut);font-size:13px;margin-top:6px}
 </div>
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<script src="https://cdn.ably.com/lib/ably.min-2.30.0.js" integrity="sha384-rEFIsedVIWDtgbXX8tgLdt3FqyhqXcyab7ICHpdt2UErA00K7lzuf2pCsBnygjZ/" crossorigin="anonymous"></script>
+<script src="ably-device-3.1.0.min.js" integrity="sha384-WsbuoGjYaBoRgVEN6WpSKG5LwW2RpmeI1pkkrwPWjq3oOOlN5TnumcTZfXZVRp8p"></script>
 <script>window.__REMOTE__={"api": "https://api.github.com/gists/6dc819e272e03b4655c631c4a0e23af0", "file": "s.json", "tfile": "t.json", "poll_ms": 75000, "live_poll_ms": 240000, "stale_sec": 300, "hb_stale_sec": 30};</script>
 <script>
 const EMBED = window.__EMBED__ || null;
@@ -331,9 +331,9 @@ function onAbly(msg){
   header();
 }
 function startAbly(){
-  if(!REMOTE.tfile) return; if(!window.Ably||!TOK){ablyState="unavailable";console.warn("realtime unavailable: "+(!window.Ably?"Ably SDK not loaded":"no token"));return}
+  if(!REMOTE.tfile) return; if(!window.AblyPubSub||!TOK){ablyState="unavailable";console.warn("realtime unavailable: "+(!window.AblyPubSub?"Ably SDK not loaded":"no token"));return}
   try{
-    ably=new Ably.Realtime({authCallback:async(params,cb)=>{try{ if(!TOK||!TOK.token_details||TOK.token_details.expires<Date.now()+120000) await getRemote(); cb(null,TOK.token_details) }catch(e){cb(String(e&&e.message||e),null)}},
+    ably=AblyPubSub.createClient({authCallback:async(params,cb)=>{try{ if(!TOK||!TOK.token_details||TOK.token_details.expires<Date.now()+120000) await getRemote(); cb(null,TOK.token_details) }catch(e){cb(String(e&&e.message||e),null)}},
       disconnectedRetryTimeout:4000,suspendedRetryTimeout:15000});
     ably.connection.on(sc=>{const was=isLive();ablyState=sc.current;if(sc.current==="connected"){src=SRC_LIVE;$("src").textContent=src}if(was&&sc.current!=="connected"){src=SRC_FALL;kickRemote(3000)}header()});
     ably.channels.get(TOK.channel).subscribe(onAbly);
