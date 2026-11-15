@@ -1,0 +1,71 @@
+<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>XAUUSD Paper Desk</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--b:#30363d;--t:#e6edf3;--m:#8b949e;--g:#3fb950;--r:#f85149;--y:#d29922;--au:#e3b341}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:14px/1.4 -apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1100px;margin:auto;padding:12px}h1{font-size:18px;margin:4px 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pill{font-size:11px;padding:2px 8px;border-radius:99px;font-weight:700}.p-open{background:#1f6f3a}.p-closed{background:#444c56}.p-nofeed{background:#9e6a03}.p-stale{background:#8e1519}.p-paper{background:#1f4b99}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}.card{background:var(--card);border:1px solid var(--b);border-radius:10px;padding:10px}
+.k{color:var(--m);font-size:11px;text-transform:uppercase}.v{font-size:20px;font-weight:700}.s{color:var(--m);font-size:12px}
+.pos{color:var(--g)}.neg{color:var(--r)}table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:4px 6px;border-bottom:1px solid var(--b);text-align:left;white-space:nowrap}
+th{color:var(--m);font-weight:600}.sec{margin-top:10px}.sec h2{font-size:13px;color:var(--m);margin:0 0 6px;text-transform:uppercase}
+canvas{width:100%;height:280px;display:block}.scroll{overflow-x:auto}.ev{font-family:ui-monospace,monospace;font-size:11.5px;max-height:260px;overflow:auto}
+.ev div{padding:2px 0;border-bottom:1px dashed #21262d}code{color:var(--au)}
+</style></head><body><div class="wrap">
+<h1>🥇 XAUUSD Paper Desk <span class="pill p-paper">PAPER · LIVE zablokowany</span> <span id="pill" class="pill p-closed">…</span> <span id="upd" class="s"></span></h1>
+<div class="grid">
+ <div class="card"><div class="k">Bid / Ask</div><div class="v" id="px">–</div><div class="s" id="sp"></div></div>
+ <div class="card"><div class="k">Equity</div><div class="v" id="eq">–</div><div class="s" id="eqs"></div></div>
+ <div class="card"><div class="k">P&amp;L dziś</div><div class="v" id="pd">–</div><div class="s" id="pds"></div></div>
+ <div class="card"><div class="k">Transakcje</div><div class="v" id="tr">–</div><div class="s" id="trs"></div></div>
+ <div class="card"><div class="k">Trend 5m / ATR 1m</div><div class="v" id="trend">–</div><div class="s" id="ind"></div></div>
+ <div class="card"><div class="k">Rynek</div><div class="v" id="mk" style="font-size:15px">–</div><div class="s" id="mks"></div></div>
+</div>
+<div class="sec card"><h2>Świece 1m (z prawdziwych ticków) · EMA9 1m</h2><canvas id="ch"></canvas><div class="s" id="chs"></div></div>
+<div class="sec card"><h2>Otwarta pozycja</h2><div id="op" class="scroll s">brak</div></div>
+<div class="sec card"><h2>Historia transakcji</h2><div class="scroll"><table id="ct"></table></div></div>
+<div class="sec card"><h2>Log decyzji</h2><div class="ev" id="ev"></div></div>
+<div class="sec card"><h2>Parametry</h2><div class="s" id="pr"></div><div class="s" id="src"></div></div>
+</div>
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<script>window.__REMOTE__={"api": "https://api.github.com/gists/c084f9f0dc008caed4aff539d03b749a", "file": "x.json", "poll_ms": 90000};</script>
+<script>
+const R=window.__REMOTE__||null;const $=id=>document.getElementById(id);
+const f2=x=>x==null?'–':(+x).toFixed(2);const usd=x=>(x<0?'-$':'$')+Math.abs(x).toFixed(2);
+const cls=x=>x>0?'pos':x<0?'neg':'';const tm=t=>new Date(t*1000).toLocaleString('pl-PL',{timeZone:'Europe/Warsaw',hour12:false,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+const REASON={STOP:'stop-loss',TAKE_PROFIT:'take-profit 1.5R',BREAKEVEN:'breakeven',TIME_STOP:'limit czasu',FLAT_BEFORE_BREAK:'zamknięcie przed przerwą',MARKET_CLOSED_LAST_QUOTE:'rynek zamknięty'};
+function ema(v,n){if(v.length<n)return v.map(()=>null);const k=2/(n+1);let o=Array(n-1).fill(null);let e=v.slice(0,n).reduce((a,b)=>a+b)/n;o.push(e);for(let i=n;i<v.length;i++){e=v[i]*k+e*(1-k);o.push(e)}return o}
+function draw(s){const cv=$('ch'),W=cv.clientWidth,H=280,dpr=devicePixelRatio||1;cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);g.clearRect(0,0,W,H);
+ let cs=s.candles.slice(-120);const cur=s.hb&&s.hb.current_candle;if(cur&&(!cs.length||cur.t>cs[cs.length-1].t))cs=cs.concat([{...cur,live:1}]);
+ if(!cs.length){g.fillStyle='#8b949e';g.font='13px sans-serif';g.fillText('Brak świec — rynek zamknięty albo trwa zbieranie ticków.',12,30);return}
+ const lv=[];(s.open_positions||[]).forEach(p=>{lv.push([p.stop,'#f85149','SL']);lv.push([p.tp,'#3fb950','TP']);lv.push([p.entry,'#58a6ff','IN'])});
+ let lo=Math.min(...cs.map(c=>c.l),...lv.map(x=>x[0])),hi=Math.max(...cs.map(c=>c.h),...lv.map(x=>x[0]));if(hi-lo<0.5){hi+=0.25;lo-=0.25}
+ const pad=50,y=v=>8+(hi-v)/(hi-lo)*(H-24),bw=(W-pad)/Math.max(cs.length,30);
+ g.strokeStyle='#21262d';g.fillStyle='#8b949e';g.font='10px sans-serif';for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;g.beginPath();g.moveTo(0,y(v));g.lineTo(W-pad,y(v));g.stroke();g.fillText(v.toFixed(2),W-pad+3,y(v)+3)}
+ cs.forEach((c,i)=>{const x=i*bw+bw/2,up=c.c>=c.o;g.strokeStyle=g.fillStyle=up?'#3fb950':'#f85149';g.globalAlpha=c.live?.55:1;g.beginPath();g.moveTo(x,y(c.h));g.lineTo(x,y(c.l));g.stroke();g.fillRect(x-bw*.35,Math.min(y(c.o),y(c.c)),bw*.7,Math.max(1,Math.abs(y(c.o)-y(c.c))))});g.globalAlpha=1;
+ const e=ema(cs.map(c=>c.c),9);g.strokeStyle='#e3b341';g.beginPath();let st=0;e.forEach((v,i)=>{if(v==null)return;const x=i*bw+bw/2;st?g.lineTo(x,y(v)):g.moveTo(x,y(v));st=1});g.stroke();
+ lv.forEach(([v,c,l])=>{g.strokeStyle=c;g.setLineDash([4,3]);g.beginPath();g.moveTo(0,y(v));g.lineTo(W-pad,y(v));g.stroke();g.setLineDash([]);g.fillStyle=c;g.fillText(l+' '+v.toFixed(2),4,y(v)-3)});
+ $('chs').textContent=`${s.candles.length} zamkniętych świec 1m w widoku (ostatnie 180 z bazy) · ticków w bazie: ${s.ticks_total} · świeca na żywo półprzezroczysta`}
+function render(s,live){const hb=s.hb||{},q=hb.quote,age=(Date.now()/1000-(hb.loop_ts||0));
+ let st=hb.state||'?';let pill={OPEN:['RYNEK OTWARTY','p-open'],CLOSED:['RYNEK ZAMKNIĘTY','p-closed'],NO_FEED:['BRAK ŚWIEŻYCH CEN','p-nofeed']}[st]||[st,'p-closed'];
+ if(age>(R?300:60))pill=['STALE · desk nie tyka','p-stale'];$('pill').textContent=pill[0];$('pill').className='pill '+pill[1];
+ $('upd').textContent='stan z '+tm(s.generated_at)+(R?' · strona publiczna, odświeżanie co ~'+Math.round(R.poll_ms/1000)+' s':' · lokalnie, co 2 s');
+ if(q){$('px').textContent=f2(q.bid)+' / '+f2(q.ask);$('sp').textContent=`spread ${f2(q.spread)} $/oz · cena z ${tm(q.ts_ms/1000)} · ${hb.ticks_per_min} nowych kwotowań/min`}
+ const eq=hb.equity??s.start_capital;$('eq').textContent=usd(eq);$('eq').className='v '+cls(eq-s.start_capital);$('eqs').textContent=`start $${s.start_capital} · ${usd(eq-s.start_capital)}`;
+ $('pd').textContent=usd(s.today.pnl);$('pd').className='v '+cls(s.today.pnl);$('pds').textContent=`${s.today.n} zamkniętych dziś (Warszawa)`;
+ const T=s.totals;$('tr').textContent=`${T.w}W / ${T.l}L`;$('trs').textContent=`${T.n} zamkniętych · zrealizowane ${usd(T.pnl)} · koszt spreadu ${usd(T.sc)}`;
+ const ind=hb.indicators||{},w=hb.warmup||{};if(ind.ready){$('trend').textContent=ind.trend+' · '+f2(ind.atr_1m);$('trend').className='v '+(ind.trend=='LONG'?'pos':ind.trend=='SHORT'?'neg':'');$('ind').textContent=`EMA9/21 5m ${f2(ind.ema9_5m)} / ${f2(ind.ema21_5m)} · EMA9 1m ${f2(ind.ema9_1m)}`}
+ else{$('trend').textContent='rozgrzewka';$('trend').className='v';$('ind').textContent=`świece 1m ${w.have_1m||0}/${w.need_1m||15}, 5m ${w.have_5m||0}/${w.need_5m||22} (~${Math.max(0,((w.need_5m||22)-(w.have_5m||0))*5)} min)`}
+ $('mk').textContent={OPEN:'otwarty',CLOSED:'zamknięty (weekend / przerwa)',NO_FEED:'otwarty wg planu, ale cena stoi'}[st]||st;
+ $('mks').textContent=st=='CLOSED'&&hb.next_open?'otwarcie: '+tm(hb.next_open):(st=='OPEN'?`do przerwy ${Math.round(hb.minutes_to_close)} min`:'')+(hb.feed_error?' · błąd źródła: '+hb.feed_error:'');
+ const op=s.open_positions||[];$('op').innerHTML=op.length?op.map(p=>`<b class="${p.side=='LONG'?'pos':'neg'}">${p.side}</b> ${p.setup} · ${f2(p.units)} oz @ ${f2(p.entry)} · SL <b>${f2(p.stop)}</b>${p.be_moved?' (BE)':''} · TP ${f2(p.tp)} · ryzyko ${usd(p.risk_usd)} · otwarta ${tm(p.open_ts)}`+(p.upnl!=null?` · niezreal. <b class="${cls(p.upnl)}">${usd(p.upnl)}</b>`:'')).join('<br>'):'brak';
+ $('ct').innerHTML='<tr><th>#</th><th>strona</th><th>setup</th><th>otwarcie</th><th>zamknięcie</th><th>oz</th><th>wejście</th><th>wyjście</th><th>powód</th><th>P&amp;L</th><th>R</th><th>spread</th></tr>'+
+  (s.closed_trades.length?s.closed_trades.map(t=>`<tr><td>${t.id}</td><td>${t.side}</td><td>${t.setup}</td><td>${tm(t.open_ts)}</td><td>${tm(t.close_ts)}</td><td>${f2(t.units)}</td><td>${f2(t.entry)}</td><td>${f2(t.exit)}</td><td>${REASON[t.reason]||t.reason}</td><td class="${cls(t.pnl)}">${usd(t.pnl)}</td><td>${f2(t.r_mult)}</td><td>${usd(t.spread_cost)}</td></tr>`).join(''):'<tr><td colspan=12 class="s">jeszcze brak zamkniętych transakcji</td></tr>');
+ $('ev').innerHTML=s.events.map(e=>`<div><span class="s">${tm(e.ts)}</span> <code>${e.kind}</code> ${e.msg.replace(/</g,'&lt;')}</div>`).join('');
+ const P=s.params;$('pr').innerHTML=`Ryzyko ${P.RISK_PER_TRADE*100}% equity/transakcję (wielkość = ryzyko / odległość stopu), limit dźwigni ${P.MAX_LEVERAGE}x, max ${P.MAX_OPEN_POSITIONS} pozycja · trend: EMA${P.EMA_FAST_5M}/${P.EMA_SLOW_5M} na 5m · wejście: pullback do EMA${P.EMA_1M} 1m albo wybicie ${P.BREAKOUT_LOOKBACK_1M} świec 1m · SL ${P.STOP_ATR_MULT}×ATR(${P.ATR_LEN_1M},1m) · TP ${P.TP_R}R · breakeven od +${P.BREAKEVEN_AT_R}R · limit czasu ${P.TIME_STOP_MIN} min · min ATR $${P.MIN_ATR} · max spread $${P.MAX_SPREAD} i ≤${P.MAX_SPREAD_TO_STOP*100}% stopu · cooldown ${P.COOLDOWN_AFTER_LOSS_MIN} min po stracie / ${P.COOLDOWN_AFTER_ANY_MIN} min po każdej · bez nowych wejść ${P.NO_NEW_ENTRY_BEFORE_BREAK_MIN} min przed przerwą, zamknięcie ${P.FORCE_FLAT_BEFORE_BREAK_MIN} min przed, bez wejść ${P.NO_ENTRY_AFTER_OPEN_MIN} min po otwarciu · prowizja $${P.COMMISSION_PER_SIDE}`;
+ $('src').textContent='Instrument: '+s.instrument+'. Ceny prawdziwe (bid/ask), nic nie jest dorysowywane ani przyspieszane.';draw(s)}
+let last=null;
+async function tick(){try{let s;if(R){const r=await fetch(R.api,{cache:'no-store'});const j=await r.json();s=JSON.parse(j.files[R.file].content)}else{s=await (await fetch('/api/state',{cache:'no-store'})).json()}last=s;render(s)}catch(e){$('upd').textContent='błąd odświeżania: '+e}}
+tick();setInterval(tick,R?R.poll_ms:2000);addEventListener('resize',()=>last&&draw(last));
+</script></body></html>
