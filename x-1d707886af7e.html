@@ -33,7 +33,7 @@ canvas{width:100%;height:280px;display:block}.scroll{overflow-x:auto}.ev{font-fa
 <script>
 const R=window.__REMOTE__||null;const $=id=>document.getElementById(id);
 const f2=x=>x==null?'–':(+x).toFixed(2);const usd=x=>(x<0?'-$':'$')+Math.abs(x).toFixed(2);
-const cls=x=>x>0?'pos':x<0?'neg':'';const tm=t=>new Date(t*1000).toLocaleString('pl-PL',{timeZone:'Europe/Warsaw',hour12:false,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+const cls=x=>x>0?'pos':x<0?'neg':'';const tm=t=>new Date(t*1000).toLocaleString('pl-PL',{timeZone:'Europe/Warsaw',hourCycle:'h23',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 const REASON={STOP:'stop-loss',TAKE_PROFIT:'take-profit 1.5R',BREAKEVEN:'breakeven',TIME_STOP:'limit czasu',FLAT_BEFORE_BREAK:'zamknięcie przed przerwą',MARKET_CLOSED_LAST_QUOTE:'rynek zamknięty'};
 function ema(v,n){if(v.length<n)return v.map(()=>null);const k=2/(n+1);let o=Array(n-1).fill(null);let e=v.slice(0,n).reduce((a,b)=>a+b)/n;o.push(e);for(let i=n;i<v.length;i++){e=v[i]*k+e*(1-k);o.push(e)}return o}
 function draw(s){const cv=$('ch'),W=cv.clientWidth,H=280,dpr=devicePixelRatio||1;cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);g.clearRect(0,0,W,H);
