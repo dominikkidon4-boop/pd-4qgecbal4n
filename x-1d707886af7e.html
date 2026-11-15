@@ -49,7 +49,7 @@ function draw(s){const cv=$('ch'),W=cv.clientWidth,H=280,dpr=devicePixelRatio||1
  $('chs').textContent=`${s.candles.length} zamkniętych świec 1m w widoku (ostatnie 180 z bazy) · ticków w bazie: ${s.ticks_total} · świeca na żywo półprzezroczysta`}
 function render(s,live){const hb=s.hb||{},q=hb.quote,age=(Date.now()/1000-(hb.loop_ts||0));
  let st=hb.state||'?';let pill={OPEN:['RYNEK OTWARTY','p-open'],CLOSED:['RYNEK ZAMKNIĘTY','p-closed'],NO_FEED:['BRAK ŚWIEŻYCH CEN','p-nofeed']}[st]||[st,'p-closed'];
- if(age>(R?300:60))pill=['STALE · desk nie tyka','p-stale'];$('pill').textContent=pill[0];$('pill').className='pill '+pill[1];
+ if(age>(R?(st==='OPEN'?300:1200):60))pill=['STALE · desk nie tyka','p-stale'];$('pill').textContent=pill[0];$('pill').className='pill '+pill[1];
  $('upd').textContent='stan z '+tm(s.generated_at)+(R?' · strona publiczna, odświeżanie co ~'+Math.round(R.poll_ms/1000)+' s':' · lokalnie, co 2 s');
  if(q){$('px').textContent=f2(q.bid)+' / '+f2(q.ask);$('sp').textContent=`spread ${f2(q.spread)} $/oz · cena z ${tm(q.ts_ms/1000)} · ${hb.ticks_per_min} nowych kwotowań/min`}
  const eq=hb.equity??s.start_capital;$('eq').textContent=usd(eq);$('eq').className='v '+cls(eq-s.start_capital);$('eqs').textContent=`start $${s.start_capital} · ${usd(eq-s.start_capital)}`;
